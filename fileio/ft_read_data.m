@@ -103,20 +103,20 @@ if iscell(filename)
   else
     % each file has the same channels, concatenate along the time dimension
     % this requires careful bookkeeping of the sample indices
-    nsmp = nan(size(filename));
+    offset = 0;
     for i=1:numel(filename)
-      nsmp(i) = hdr{i}.nSamples*hdr{i}.nTrials;
-    end
-    offset = [0 cumsum(nsmp(1:end-1))];
-    thisbegsample = begsample - offset(i);
-    thisendsample = endsample - offset(i);
-    if thisbegsample<=nsmp(i) && thisendsample>=1
-      varargin = ft_setopt(varargin, 'header', hdr{i});
-      varargin = ft_setopt(varargin, 'begsample', max(thisbegsample,1));
-      varargin = ft_setopt(varargin, 'endsample', min(thisendsample,nsmp(i)));
-      dat{i} = ft_read_data(filename{i}, varargin{:});
-    else
-      dat{i} = [];
+      thisbegsample = begsample - offset;
+      thisendsample = endsample - offset;
+      nsmp = hdr{i}.nSamples*hdr{i}.nTrials;
+      offset = offset + nsmp; % this is for the next file
+      if thisbegsample<=nsmp && thisendsample>=1
+        varargin = ft_setopt(varargin, 'header', hdr{i});
+        varargin = ft_setopt(varargin, 'begsample', max(thisbegsample,1));
+        varargin = ft_setopt(varargin, 'endsample', min(thisendsample,nsmp));
+        dat{i} = ft_read_data(filename{i}, varargin{:});
+      else
+        dat{i} = [];
+      end
     end
     dat = cat(2, dat{:}); % along the 2nd dimension
   end
@@ -140,7 +140,7 @@ fallback        = ft_getopt(varargin, 'fallback');
 cache           = ft_getopt(varargin, 'cache', false);
 dataformat      = ft_getopt(varargin, 'dataformat');
 chanunit        = ft_getopt(varargin, 'chanunit');
-timestamp       = ft_getopt(varargin, 'timestamp');
+timestamp       = ft_getopt(varargin, 'timestamp', false); % return Neuralynx NSC timestamps instead of actual data
 password        = ft_getopt(varargin, 'password', struct([]));
 
 % this allows blocking reads to avoid having to poll many times for online processing
@@ -462,13 +462,13 @@ switch dataformat
     if isempty(p)
       filename = which(filename);
     end
-    % 2017.10.17 AB - Allowing partial load
-    chan_sel=ismember(hdr.label,deblank({hdr.orig.ElectrodesInfo.Label})); % matlab 2015a
+    
+    chan_sel=ismember(deblank({hdr.orig.ElectrodesInfo.Label}),hdr.label); % matlab 2015a
     %chan_sel=contains({hdr.orig.ElectrodesInfo.Label},hdr.label); %matlab 2017a
     
     orig = openNSx(filename, 'channels',find(chan_sel),...
-      'duration', [(begsample-1)*hdr.skipfactor+1 endsample*hdr.skipfactor],...
-      'skipfactor', hdr.skipfactor);
+      'duration', [(begsample-1)*hdr.orig.skipfactor+1, endsample*hdr.orig.skipfactor],...
+      'skipfactor', hdr.orig.skipfactor);
     
     d_min=[orig.ElectrodesInfo.MinDigiValue];
     d_max=[orig.ElectrodesInfo.MaxDigiValue];
@@ -1042,7 +1042,7 @@ switch dataformat
     
     %Fieldtrip can't handle multiple sampling rates in a data block
     %We will get only the data with the most frequent sampling rate
-            
+    
     targetNumberOfChannels = hdr.orig.targetNumberOfChannels;
     targetSampleCount = hdr.orig.targetSampleCount;
     
@@ -1278,8 +1278,8 @@ switch dataformat
     % Converter' from the original .mpx files recorded by NeuroOmega
     dat=zeros(hdr.nChans,endsample - begsample + 1);
     for i=1:hdr.nChans
-      v=double(hdr.orig.(hdr.label{i}));
-      v=v*hdr.orig.(char(strcat(hdr.label{i},'_BitResolution')));
+      v=double(hdr.orig.orig.(hdr.label{i}));
+      v=v*hdr.orig.orig.(char(strcat(hdr.label{i},'_BitResolution')));
       dat(i,:)=v(begsample:endsample); %channels sometimes have small differences in samples
     end
     
@@ -1406,6 +1406,69 @@ switch dataformat
       elseif any(hdr.orig.VarHeader(chanindx(i)).Type==[0 1 3])
         % it is a neuron(0), event(1) or waveform(3) channel and therefore it has timestamps
         [nex, chanhdr] = read_plexon_nex(filename, 'header', hdr.orig, 'channel', chanindx(i), 'tsonly', 1);
+        % convert the timestamps to samples
+        sample = round(double(nex.ts - hdr.FirstTimeStamp)./hdr.TimeStampPerSample) + 1;
+        % select only timestamps that are between begin and endsample
+        sample = sample(sample>=begsample & sample<=endsample) - begsample + 1;
+        for j=sample(:)'
+          dat(i,j) = dat(i,j) + 1;
+        end
+      end
+    end
+    if any(isnan(dat(:)))
+      ft_warning('data has been padded with NaNs');
+    end
+    
+  case 'plexon_nex5' % this is the default reader for nex5 files
+    dat = zeros(length(chanindx), endsample-begsample+1);
+    for i=1:length(chanindx)
+      vh = hdr.orig.VarHeader(chanindx(i));
+      if vh.Type==5
+        % this is a continuous channel
+        if vh.Count==1
+          [nex, chanhdr] = read_nex5(filename, 'header', hdr.orig, 'channel', chanindx(i), 'tsonly', 1);
+          % the AD channel contains a single fragment
+          % determine the sample offset into this fragment
+          offset     = round(double(nex.ts-hdr.FirstTimeStamp)./hdr.TimeStampPerSample);
+          chanbegsmp = begsample - offset;
+          chanendsmp = endsample - offset;
+          if chanbegsmp<1
+            % the first sample of this channel is later than the beginning of the dataset
+            % and we are trying to read the beginning of the dataset
+            [nex, chanhdr] = read_nex5(filename, 'header', hdr.orig, 'channel', chanindx(i), 'tsonly', 0, 'begsample', 1, 'endsample', chanendsmp);
+            % padd the beginning of this channel with NaNs
+            nex.dat = [nan(1,offset) nex.dat];
+          else
+            [nex, chanhdr] = read_nex5(filename, 'header', hdr.orig, 'channel', chanindx(i), 'tsonly', 0, 'begsample', chanbegsmp, 'endsample', chanendsmp);
+          end
+          % copy the desired samples into the output matrix
+          % pad with nans if nex.dat is shorter than endsample-begsample+1
+          nummissing = endsample-begsample+1 - length(nex.dat);
+          if nummissing > 0
+            nex.dat = [nex.dat nan(1, nummissing)];	
+          end
+          dat(i,:) = nex.dat;
+        else
+          % the AD channel contains multiple fragments
+          [nex, chanhdr] = read_nex5(filename, 'header', hdr.orig, 'channel', chanindx(i), 'tsonly', 0);
+          % reconstruct the full AD timecourse with NaNs at all missing samples
+          offset     = round(double(nex.ts-hdr.FirstTimeStamp)./hdr.TimeStampPerSample); % of each fragment, in AD samples
+          nsample    = diff([nex.indx length(nex.dat)]);                                 % of each fragment, in AD samples
+          % allocate memory to hold the complete continuous record
+          cnt = nan(1, max(offset(end)+nsample(end), endsample-begsample+1));
+          for j=1:length(offset)
+            cntbegsmp  = offset(j)   + 1;
+            cntendsmp  = offset(j)   + nsample(j);
+            fragbegsmp = nex.indx(j) + 1;
+            fragendsmp = nex.indx(j) + nsample(j);
+            cnt(cntbegsmp:cntendsmp) = nex.dat(fragbegsmp:fragendsmp);
+          end
+          % copy the desired samples into the output matrix
+          dat(i,:) = cnt(begsample:endsample);
+        end
+      elseif any(vh.Type==[0 1 3])
+        % it is a neuron(0), event(1) or waveform(3) channel and therefore it has timestamps
+        [nex, chanhdr] = read_nex5(filename, 'header', hdr.orig, 'channel', chanindx(i), 'tsonly', 1);
         % convert the timestamps to samples
         sample = round(double(nex.ts - hdr.FirstTimeStamp)./hdr.TimeStampPerSample) + 1;
         % select only timestamps that are between begin and endsample

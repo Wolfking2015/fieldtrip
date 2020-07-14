@@ -124,9 +124,8 @@ cmoceanlist = {'thermal', 'haline', 'solar', 'ice', 'oxy', ...
                'deep', 'dense' 'algae', 'matter', 'turbid',...
                'speed', 'amp', 'tempo', 'rain', 'delta',   ...
                'curl', 'diff', 'tarn', 'phase', 'topo'};
-n = numel(cmoceanlist);
 for k = 1:numel(cmoceanlist)
-  cmoceanlist{k} = sprintf('-%s',cmoceanlist{k});
+  cmoceanlist{end+1} = sprintf('-%s',cmoceanlist{k});
 end
 
 if isnumeric(name)
@@ -136,6 +135,10 @@ elseif ismember(name, brewerlist)
   cmap = brewermap(n, name);
 elseif ismember(name, cmoceanlist)
   cmap = cmocean(name, n);
+elseif isequal(name, 'default')
+  % requires separate handling, because there's no function called default,
+  % the default is taken care of by colormap
+  cmap = name;
 else
   % this works both for the MATLAB and the MATPLOTLIB colormaps
   % which have the different colormaps available as an m-file
