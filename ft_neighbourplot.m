@@ -84,8 +84,10 @@ end
 cfg = ft_checkconfig(cfg, 'renamed', {'elecfile', 'elec'});
 cfg = ft_checkconfig(cfg, 'renamed', {'gradfile', 'grad'});
 cfg = ft_checkconfig(cfg, 'renamed', {'optofile', 'opto'});
+cfg = ft_checkconfig(cfg, 'renamed', {'newfigure', 'figure'});
 
 % set the defaults
+cfg.verbose    = ft_getopt(cfg, 'verbose', 'no');
 cfg.enableedit = ft_getopt(cfg, 'enableedit', 'no');
 cfg.visible    = ft_getopt(cfg, 'visible', 'on');
 cfg.renderer   = ft_getopt(cfg, 'renderer', []); % let MATLAB decide on the default
@@ -96,12 +98,6 @@ elseif hasdata
   cfg.neighbours = ft_prepare_neighbours(cfg, data);
 else
   cfg.neighbours = ft_prepare_neighbours(cfg);
-end
-
-if ~isfield(cfg, 'verbose')
-  cfg.verbose = 'no';
-elseif strcmp(cfg.verbose, 'yes')
-  cfg.verbose = true;
 end
 
 % get the the grad or elec
@@ -136,7 +132,7 @@ else
 end
 
 % open a new figure with the specified settings
-hf = open_figure(keepfields(cfg, {'newfigure', 'position', 'visible', 'renderer'}));
+hf = open_figure(keepfields(cfg, {'figure', 'position', 'visible', 'renderer'}));
 
 axis equal
 axis vis3d
@@ -295,7 +291,7 @@ elseif isempty(lastSensId) || ~istrue(cfg.enableedit)
   else
     title(['Selected channel: ' cfg.neighbours(curSensId).label]);
   end
-  if cfg.verbose
+  if istrue(cfg.verbose)
     str = sprintf('%s, ', cfg.neighbours(curSensId).neighblabel{:});
     if length(str)>2
       % remove the last comma and space
@@ -394,7 +390,7 @@ elseif istrue(cfg.enableedit)
     ft_error('Channel coordinates are too high dimensional');
   end
 
-  if cfg.verbose
+  if istrue(cfg.verbose)
     str = sprintf('%s, ', cfg.neighbours(curSensId).neighblabel{:});
     if length(str)>2
       % remove the last comma and space

@@ -47,6 +47,9 @@ function [type] = ft_senstype(input, desired)
 %   'neuralynx'
 %   'plexon'
 %   'artinis'
+%   'nirx'
+%   'shimadzu'
+%   'hitachi'
 %   'nirs'
 %   'meg'
 %   'eeg'
@@ -152,11 +155,12 @@ isdata   = isa(input, 'struct')  && (isfield(input, 'hdr') || isfield(input, 'ti
 isheader = isa(input, 'struct')  && isfield(input, 'label') && isfield(input, 'Fs');
 isgrad   = isa(input, 'struct')  && isfield(input, 'label') && isfield(input, 'pnt')  &&  isfield(input, 'ori'); % old style
 iselec   = isa(input, 'struct')  && isfield(input, 'label') && isfield(input, 'pnt')  && ~isfield(input, 'ori'); % old style
-isgrad   = (isa(input, 'struct') && isfield(input, 'label') && isfield(input, 'coilpos')) || isgrad;             % new style
-iselec   = (isa(input, 'struct') && isfield(input, 'label') && isfield(input, 'elecpos')) || iselec;             % new style
-isnirs   = isa(input, 'struct')  && isfield(input, 'label') && isfield(input, 'optopos');
+isnirs   = isa(input, 'struct')  && isfield(input, 'label') && isfield(input, 'fiberpos');                       % old style
+isgrad   = (isa(input, 'struct') && isfield(input, 'label') && isfield(input, 'coilpos'))  || isgrad;            % new style
+iselec   = (isa(input, 'struct') && isfield(input, 'label') && isfield(input, 'elecpos'))  || iselec;            % new style
+isnirs   = (isa(input, 'struct')  && isfield(input, 'label') && isfield(input, 'optopos')) || isnirs;            % new style
 islabel  = isa(input, 'cell')    && ~isempty(input) && isa(input{1}, 'char');
-haslabel    = isa(input, 'struct')  && isfield(input, 'label');
+haslabel = isa(input, 'struct')  && isfield(input, 'label');
 
 if ~(isdata || isheader || isgrad || iselec || isnirs || islabel || haslabel) && isfield(input, 'hdr')
   input    = input.hdr;
@@ -257,7 +261,7 @@ elseif issubfield(input, 'orig.FileHeader') && issubfield(input, 'orig.VarHeader
     % this is a complete header that was read from a Plexon *.nex file using read_plexon_nex
     type = 'plexon';
   end
-
+  
 elseif issubfield(input, 'orig.stname')
   % this is a complete header that was read from an ITAB dataset
   type = 'itab';
@@ -425,6 +429,15 @@ else
     elseif (sum(ismember(ft_senslabel('ctfref'), sens.label)) > 10)
       type = 'ctf'; % 29 in the reference set, it might be 151 or 275 channels
       
+    elseif (mean(~cellfun(@isempty, regexp(sens.label, 'Rx(\w+)-Tx(\w+)'))) > 0.5)
+      type = 'artinis';
+    elseif (mean(~cellfun(@isempty, regexp(sens.label, 'Tx(\w+)-Rx(\w+)'))) > 0.5)
+      type = 'artinis';
+    elseif (mean(~cellfun(@isempty, regexp(sens.label, 'S(\w+)-D(\w+)'))) > 0.5)
+      type = 'nirs';
+    elseif (mean(~cellfun(@isempty, regexp(sens.label, 'D(\w+)-S(\w+)'))) > 0.5)
+      type = 'nirs';
+      
     end
   end % look at label, ori and/or pos
 end % if isfield(sens, 'type')
@@ -460,6 +473,8 @@ end
 if ~isempty(desired)
   % return a boolean flag
   switch desired
+    case {'nirs'}
+      type = any(strcmp(type, {'nirs' 'artinis' 'nirx' 'shimadzu' 'hitachi'}));
     case {'eeg'}
       type = any(strcmp(type, {'eeg' 'ieeg' 'seeg' 'ecog' 'ant128' 'biosemi64' 'biosemi128' 'biosemi256' 'egi32' 'egi64' 'egi128' 'egi256' 'ext1020' 'eeg1005' 'eeg1010' 'eeg1020'}));
     case 'ext1020'

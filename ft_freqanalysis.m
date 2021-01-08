@@ -223,7 +223,7 @@ cfg = ft_checkconfig(cfg, 'forbidden',   {'latency'}); % see bug 1376 and 1076
 cfg = ft_checkconfig(cfg, 'renamedval',  {'method', 'wltconvol', 'wavelet'});
 
 % select channels and trials of interest, by default this will select all channels and trials
-tmpcfg = keepfields(cfg, {'trials', 'channel', 'showcallinfo'});
+tmpcfg = keepfields(cfg, {'trials', 'channel', 'tolerance', 'showcallinfo'});
 data = ft_selectdata(tmpcfg, data);
 % restore the provenance information
 [cfg, data] = rollback_provenance(cfg, data);
@@ -288,10 +288,12 @@ switch cfg.method
     
   case 'irasa'
     cfg.taper       = ft_getopt(cfg, 'taper', 'hanning');
+    cfg.output      = ft_getopt(cfg, 'output', 'pow');
+    cfg.pad         = ft_getopt(cfg, 'pad', 'nextpow2');
     if ~isequal(cfg.taper, 'hanning')
       ft_error('the irasa method supports hanning tapers only');
     end
-    if isfield(cfg, 'output') && ~isequal(cfg.output, 'pow')
+    if ~isequal(cfg.output, 'pow')
       ft_error('the irasa method outputs power only');
     end
     if ~isequal(cfg.pad, 'nextpow2')

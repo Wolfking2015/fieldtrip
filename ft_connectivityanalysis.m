@@ -158,8 +158,7 @@ normpow = 1; % default, has to be overruled e.g. in csd
 
 % select trials of interest
 if ~strcmp(cfg.trials, 'all')
-  tmpcfg = [];
-  tmpcfg.trials = cfg.trials;
+  tmpcfg = keepfields(cfg, {'trials', 'tolerance', 'showcallinfo'});
   data = ft_selectdata(tmpcfg, data);
   [cfg, data] = rollback_provenance(cfg, data);
 end
@@ -964,6 +963,7 @@ switch cfg.method
         elseif numel(cfg.refindx)==1 || numel(cfg.refchannel)==1,
           outdimord = 'chan';
         else
+          outdimord = 'chan';
           %ft_error('at present cfg.refindx should be either ''all'', or scalar');
         end
         if numel(cfg.(cfg.method).lags)>1 && ~istrue(cfg.(cfg.method).combinelags)
@@ -1084,12 +1084,13 @@ if exist('powindx', 'var') && ~isempty(powindx)
       if ~isempty(varout)
         varout = varout(keepchn, :, :, :, :);
       end
-      inside = false(zeros(1, size(data.pos, 1)));
+      inside = false(size(data.pos, 1),1);
       inside(data.inside) = true;
       inside = inside(keepchn);
       %       data.inside = find(inside)';
       %       data.outside = find(inside==0)';
       data.pos = data.pos(keepchn, :);
+      data.inside = data.inside(keepchn);
   end % switch dtype
 end
 

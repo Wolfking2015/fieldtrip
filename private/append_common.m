@@ -93,8 +93,9 @@ switch cfg.appenddim
     tmpcfg.select = 'union';
     [varargin{:}] = ft_selectdata(tmpcfg, varargin{:});
     for i=1:numel(varargin)
-      [cfg, varargin{i}] = rollback_provenance(cfg, varargin{i});
+      [cfg_rolledback, varargin{i}] = rollback_provenance(cfg, varargin{i});
     end
+    cfg = cfg_rolledback;
     
     % start with the union of all input data
     data = keepfields(varargin{1}, {'label', 'time', 'freq', 'dimord'});
@@ -130,12 +131,12 @@ switch cfg.appenddim
             chansel = match_str(varargin{j}.label, oldlabel{j});
             data.(cfg.parameter{i})(:,chansel,chansel) = varargin{j}.(cfg.parameter{i})(:,chansel,chansel);
           end
-          
-        case {'chan' 'chan_time' 'chan_freq'}
+           
+        case {'chan' 'chan_time' 'chan_freq' 'chan_freq_time'}
           data.(cfg.parameter{i}) = nan(dimsiz);
           for j=1:numel(varargin)
             chansel = match_str(varargin{j}.label, oldlabel{j});
-            data.(cfg.parameter{i})(chansel,:) = varargin{j}.(cfg.parameter{i})(chansel,:);
+            data.(cfg.parameter{i})(chansel,:,:) = varargin{j}.(cfg.parameter{i})(chansel,:,:);
           end
           
         case {'rpt_chan_time' 'subj_chan_time' 'rpt_chan_freq' 'rpttap_chan_freq' 'subj_chan_freq'}
